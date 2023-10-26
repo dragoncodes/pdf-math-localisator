@@ -1,0 +1,21 @@
+curl https://api.openai.com/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -d '{
+  "model": "gpt-3.5-turbo",
+  "messages": [
+    {
+      "role": "system",
+      "content": "Given the text below for a maths competition translate it in Bulgarian. Try to retain formulas when you can, usage of LateX is ok. Skip translating Rounds numbers, they are most likely at the bottom."
+    },
+    {
+      "role": "user",
+      "content": "<set the content here>"
+    },
+  ],
+  "temperature": 1,
+  "max_tokens": 2040,
+  "top_p": 1,
+  "frequency_penalty": 0,
+  "presence_penalty": 0
+}'
