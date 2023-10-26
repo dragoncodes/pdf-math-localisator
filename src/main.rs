@@ -1,3 +1,4 @@
+use clap::Parser;
 use futures::future::join_all;
 use reqwest;
 use serde::{Deserialize, Serialize};
@@ -5,7 +6,16 @@ use std::env;
 use std::error::Error;
 use std::{io::Write, process::Command};
 
-use clap::Parser;
+#[derive(Debug)]
+struct PdfParsingError(String);
+
+impl std::fmt::Display for PdfParsingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for PdfParsingError {}
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -13,6 +23,33 @@ struct Args {
     pdf_url: String,
     language_to_translate_into: String,
     additional_prompts: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Message {
+    role: String,
+    content: String,
+}
+
+#[derive(Serialize)]
+struct OpenAIRequest {
+    model: String,
+    messages: Vec<Message>,
+    temperature: f32,
+    max_tokens: i32,
+    top_p: f32,
+    frequency_penalty: i32,
+    presence_penalty: i32,
+}
+
+#[derive(Deserialize)]
+struct OpenAIResponse {
+    choices: Vec<Choice>,
+}
+
+#[derive(Deserialize)]
+struct Choice {
+    message: Message,
 }
 
 #[tokio::main]
@@ -35,14 +72,13 @@ async fn main() {
         match text_result {
             Ok(text) => {
                 let future = translate_text_openai(
-                    text.clone(),
                     api_key.clone(),
+                    text.clone(),
                     args.language_to_translate_into.clone(),
                 );
                 futures.push(future);
             }
             Err(_) => {
-                // Handle the error or break out of the loop
                 break;
             }
         }
@@ -54,12 +90,10 @@ async fn main() {
 
     println!("{} pages qeued for translation", futures.len());
 
-    // Await all futures to complete concurrently
     let results = join_all(futures).await;
 
     println!("Translations collected... printing");
 
-    // Combine the results
     let full_translated_text: String = results.iter().fold(String::new(), |mut acc, result| {
         if let Ok(text) = result {
             acc.push_str(text);
@@ -81,17 +115,6 @@ async fn download_pdf(url: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-
-#[derive(Debug)]
-struct PdfParsingError(String);
-
-impl std::fmt::Display for PdfParsingError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl std::error::Error for PdfParsingError {}
 
 fn convert_pdf_page_to_text(page: i8, local_pdf_file: &str) -> Result<String, Box<dyn Error>> {
     let output = Command::new("./pdftotext")
@@ -123,36 +146,9 @@ fn convert_pdf_page_to_text(page: i8, local_pdf_file: &str) -> Result<String, Bo
     }
 }
 
-#[derive(Serialize, Deserialize)]
-struct Message {
-    role: String,
-    content: String,
-}
-
-#[derive(Serialize)]
-struct OpenAIRequest {
-    model: String,
-    messages: Vec<Message>,
-    temperature: f32,
-    max_tokens: i32,
-    top_p: f32,
-    frequency_penalty: i32,
-    presence_penalty: i32,
-}
-
-#[derive(Deserialize)]
-struct OpenAIResponse {
-    choices: Vec<Choice>,
-}
-
-#[derive(Deserialize)]
-struct Choice {
-    message: Message,
-}
-
-pub async fn translate_text_openai(
-    text: String,
+async fn translate_text_openai(
     api_key: String,
+    text: String,
     language: String,
 ) -> Result<String, Box<dyn Error>> {
     let client = reqwest::Client::new();
